@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mini Paint</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      align-items: center;
+      background: #f5f5f5;
+    }
+    #toolbar {
+      display: flex;
+      padding: 15px;
+      background: #fff;
+      gap: 15px;
+      width: 100%;
+      justify-content: center;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      align-items: center;
+    }
+    #toolbar button {
+      padding: 8px 16px;
+      border: 2px solid #ddd;
+      background: #fff;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    #toolbar button:hover {
+      background: #f0f0f0;
+      border-color: #999;
+    }
+    #toolbar button.active {
+      background: #007bff;
+      color: white;
+      border-color: #007bff;
+    }
+    .color-picker {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .color-circle {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      border: 3px solid #ddd;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .color-circle:hover {
+      transform: scale(1.1);
+      border-color: #999;
+    }
+    .color-circle.active {
+      border-color: #333;
+      border-width: 4px;
+    }
+    #canvasContainer {
+      flex: 1;
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      padding: 20px;
+    }
+    canvas {
+      border: 2px solid #ccc;
+      cursor: crosshair;
+      background: #fff;
+      border-radius: 5px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+  </style>
+</head>
+<body>
+  <div id="toolbar">
+    <button id="lineBtn" onclick="setTool('line')" class="active">Line</button>
+    <button id="rectangleBtn" onclick="setTool('rectangle')">Rectangle</button>
+    <button id="triangleBtn" onclick="setTool('triangle')">Triangle</button>
+    <button id="circleBtn" onclick="setTool('circle')">Circle</button>
+    <button id="ellipseBtn" onclick="setTool('ellipse')">Ellipse</button>
+    <button id="floodFillBtn" onclick="setTool('floodFill')">Flood Fill</button>
+    <button id="boundaryFillBtn" onclick="setTool('boundaryFill')">Boundary Fill</button>
+    <div class="color-picker">
+      <div class="color-circle active" style="background-color: #000000" onclick="setFillColor(event, '#000000')"></div>
+      <div class="color-circle" style="background-color: #ff0000" onclick="setFillColor(event, '#ff0000')"></div>
+      <div class="color-circle" style="background-color: #00ff00" onclick="setFillColor(event, '#00ff00')"></div>
+      <div class="color-circle" style="background-color: #0000ff" onclick="setFillColor(event, '#0000ff')"></div>
+    </div>
+    <button onclick="clearCanvas()">Clear</button>
+  </div>
+  <div id="canvasContainer">
+    <canvas id="canvas" width="1200" height="700"></canvas>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    let tool = 'line';
+    let isDrawing = false;
+    let startX = 0, startY = 0;
+    let fillColor = '#000000';
+    let history = [];
+    let previewCanvas = null;
+    let previewCtx = null;
+
+    // Create preview canvas
+    function initPreviewCanvas() {
+      previewCanvas = document.createElement('canvas');
+      previewCanvas.width = canvas.width;
+      previewCanvas.height = canvas.height;
+      previewCtx = previewCanvas.getContext('2d');
+    }
+
+    function setTool(selectedTool) {
+      tool = selectedTool;
+      // Update button states
+      document.querySelectorAll('#toolbar button').forEach(btn => btn.classList.remove('active'));
+      const btn = document.getElementById(selectedTool + 'Btn');
+      if (btn) btn.classList.add('active');
+    }
+
+    function setFillColor(event, color) {
+      fillColor = color;
+      // Update color circle states
+      document.querySelectorAll('.color-circle').forEach(circle => circle.classList.remove('active'));
+      event.target.classList.add('active');
+    }
+
+    function clearCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      history = [];
+    }
+
+    canvas.addEventListener('mousedown', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      
+      if (tool === 'floodFill') {
+        floodFill(Math.floor(x), Math.floor(y));
+        saveDrawing('floodFill', x, y, x, y); // Save fill action
+        return;
+      }
+      if (tool === 'boundaryFill') {
+        boundaryFill(Math.floor(x), Math.floor(y));
+        saveDrawing('boundaryFill', x, y, x, y); // Save fill action
+        return;
+      }
+      isDrawing = true;
+      startX = x;
+      startY = y;
+      
+      // Save current canvas state for preview
+      saveCanvasState();
+    });
+
+    canvas.addEventListener('mouseup', (e) => {
+      if (!isDrawing) return;
+      isDrawing = false;
+      const rect = canvas.getBoundingClientRect();
+      const endX = e.clientX - rect.left;
+      const endY = e.clientY - rect.top;
+      
+      // Finalize the drawing
+      restoreCanvasState();
+      drawShape(startX, startY, endX, endY, true);
+      saveDrawing(tool, startX, startY, endX, endY);
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      if (!isDrawing) return;
+      const rect = canvas.getBoundingClientRect();
+      const endX = e.clientX - rect.left;
+      const endY = e.clientY - rect.top;
+      
+      // Show preview
+      restoreCanvasState();
+      drawShape(startX, startY, endX, endY, false);
+    });
+
+    function saveCanvasState() {
+      if (!previewCanvas) initPreviewCanvas();
+      previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+      previewCtx.drawImage(canvas, 0, 0);
+    }
+
+    function restoreCanvasState() {
+      if (previewCanvas) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(previewCanvas, 0, 0);
+      }
+    }
+
+    function drawShape(x1, y1, x2, y2, finalize) {
+      ctx.strokeStyle = fillColor;
+      ctx.lineWidth = 2;
+      switch (tool) {
+        case 'line':
+          drawLine(x1, y1, x2, y2);
+          break;
+        case 'rectangle':
+          drawRectangle(x1, y1, x2, y2);
+          break;
+        case 'triangle':
+          drawTriangle(x1, y1, x2, y2);
+          break;
+        case 'circle':
+          drawCircle(x1, y1, x2, y2);
+          break;
+        case 'ellipse':
+          drawEllipse(x1, y1, x2, y2);
+          break;
+      }
+    }
+
+    function saveDrawing(tool, x1, y1, x2, y2) {
+      history.push({ tool, x1, y1, x2, y2, color: fillColor });
+    }
+
+    function redrawCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (const item of history) {
+        ctx.strokeStyle = item.color;
+        ctx.lineWidth = 2;
+        switch (item.tool) {
+          case 'line':
+            drawLine(item.x1, item.y1, item.x2, item.y2);
+            break;
+          case 'rectangle':
+            drawRectangle(item.x1, item.y1, item.x2, item.y2);
+            break;
+          case 'triangle':
+            drawTriangle(item.x1, item.y1, item.x2, item.y2);
+            break;
+          case 'circle':
+            drawCircle(item.x1, item.y1, item.x2, item.y2);
+            break;
+          case 'ellipse':
+            drawEllipse(item.x1, item.y1, item.x2, item.y2);
+            break;
+        }
+      }
+    }
+
+    function drawLine(x1, y1, x2, y2) {
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+
+    function drawCircle(x1, y1, x2, y2) {
+      const radius = Math.hypot(x2 - x1, y2 - y1);
+      ctx.beginPath();
+      ctx.arc(x1, y1, radius, 0, 2 * Math.PI);
+      ctx.stroke();
+    }
+
+    function drawEllipse(x1, y1, x2, y2) {
+      const rx = Math.abs(x2 - x1);
+      const ry = Math.abs(y2 - y1);
+      ctx.beginPath();
+      ctx.ellipse(x1, y1, rx, ry, 0, 0, 2 * Math.PI);
+      ctx.stroke();
+    }
+
+    function drawRectangle(x1, y1, x2, y2) {
+      ctx.beginPath();
+      ctx.rect(x1, y1, x2 - x1, y2 - y1);
+      ctx.stroke();
+    }
+
+    function drawTriangle(x1, y1, x2, y2) {
+      // Segitiga sama kaki, alas di bawah
+      const baseMidX = (x1 + x2) / 2;
+      ctx.beginPath();
+      ctx.moveTo(baseMidX, y1); // puncak atas
+      ctx.lineTo(x1, y2);       // kiri bawah
+      ctx.lineTo(x2, y2);       // kanan bawah
+      ctx.closePath();
+      ctx.stroke();
+    }
+
+    function getPixel(imageData, x, y) {
+      if (x < 0 || y < 0 || x >= imageData.width || y >= imageData.height) {
+        return [0, 0, 0, 0];
+      }
+      const index = (y * imageData.width + x) * 4;
+      return [
+        imageData.data[index],
+        imageData.data[index + 1],
+        imageData.data[index + 2],
+        imageData.data[index + 3]
+      ];
+    }
+
+    function setPixel(imageData, x, y, color) {
+      if (x < 0 || y < 0 || x >= imageData.width || y >= imageData.height) {
+        return;
+      }
+      const index = (y * imageData.width + x) * 4;
+      const rgba = hexToRgba(color);
+      imageData.data[index] = rgba[0];
+      imageData.data[index + 1] = rgba[1];
+      imageData.data[index + 2] = rgba[2];
+      imageData.data[index + 3] = rgba[3];
+    }
+
+    function colorMatch(a, b) {
+      return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
+    }
+
+    function floodFill(x, y) {
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const targetColor = getPixel(imageData, x, y);
+      const fillRgba = hexToRgba(fillColor);
+      
+      // Don't fill if target color is same as fill color
+      if (colorMatch(targetColor, fillRgba)) {
+        return;
+      }
+      
+      const fillStack = [[x, y]];
+      const visited = new Set();
+
+      while (fillStack.length > 0) {
+        const [cx, cy] = fillStack.pop();
+        const key = cx + ',' + cy;
+        
+        if (visited.has(key)) continue;
+        visited.add(key);
+        
+        const currentColor = getPixel(imageData, cx, cy);
+        if (colorMatch(currentColor, targetColor)) {
+          setPixel(imageData, cx, cy, fillColor);
+          
+          // Add neighboring pixels
+          if (cx > 0) fillStack.push([cx - 1, cy]);
+          if (cx < canvas.width - 1) fillStack.push([cx + 1, cy]);
+          if (cy > 0) fillStack.push([cx, cy - 1]);
+          if (cy < canvas.height - 1) fillStack.push([cx, cy + 1]);
+        }
+      }
+      ctx.putImageData(imageData, 0, 0);
+    }
+
+    function boundaryFill(x, y) {
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const boundary = [0, 0, 0, 255]; // black as boundary
+      const fillRgba = hexToRgba(fillColor);
+      const visited = new Set();
+
+      function fill(x, y) {
+        const key = x + ',' + y;
+        if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height || visited.has(key)) {
+          return;
+        }
+        
+        visited.add(key);
+        const current = getPixel(imageData, x, y);
+        
+        if (!colorMatch(current, boundary) && !colorMatch(current, fillRgba)) {
+          setPixel(imageData, x, y, fillColor);
+          fill(x + 1, y);
+          fill(x - 1, y);
+          fill(x, y + 1);
+          fill(x, y - 1);
+        }
+      }
+      
+      fill(x, y);
+      ctx.putImageData(imageData, 0, 0);
+    }
+
+    function hexToRgba(hex) {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return [r, g, b, 255];
+    }
+
+    // Initialize
+    initPreviewCanvas();
+  </script>
+</body>
+</html>
