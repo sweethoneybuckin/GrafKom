@@ -123,7 +123,8 @@
       <strong>🎨 Paint Instructions:</strong><br><br>
       <strong>Select Tool:</strong> Click shapes to select<br>
       • Drag to move shapes<br>
-      • Use corner handles to resize<br>
+      • Lines: Drag endpoints to resize<br>
+      • Other shapes: Use corner handles to resize<br>
       • Use rotation handle (🔄) to rotate<br><br>
       <strong>Drawing Tools:</strong> Click and drag to create<br><br>
       <strong>Fill Tools:</strong> Click inside shapes to fill<br><br>
@@ -140,7 +141,7 @@
     let isResizing = false;
     let isRotating = false;
     let startX = 0, startY = 0;
-    let resizeStartX = 0, resizeStartY = 0; // Store start position for resize
+    let resizeStartX = 0, resizeStartY = 0;
     let fillColor = '#000000';
     let shapes = [];
     let selectedShape = null;
@@ -159,7 +160,7 @@
         this.y2 = y2;
         this.color = color;
         this.selected = false;
-        this.rotation = 0; // in radians
+        this.rotation = 0;
         this.centerX = (x1 + x2) / 2;
         this.centerY = (y1 + y2) / 2;
       }
@@ -172,7 +173,6 @@
       draw(ctx, showSelection = true) {
         ctx.save();
         
-        // Apply rotation if any
         if (this.rotation !== 0) {
           ctx.translate(this.centerX, this.centerY);
           ctx.rotate(this.rotation);
@@ -246,64 +246,143 @@
       }
 
       drawSelectionHandles(ctx) {
-        const bounds = this.getBounds();
         ctx.save();
         
-        // Selection border
-        ctx.strokeStyle = '#007bff';
-        ctx.fillStyle = '#ffffff';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([8, 4]);
-        ctx.strokeRect(bounds.left - 8, bounds.top - 8, bounds.width + 16, bounds.height + 16);
-        ctx.setLineDash([]);
-        
-        // Corner and edge handles - BIGGER and more visible
-        const handleSize = 12; // Increased from 8
-        const handles = this.getHandles();
-        
-        handles.forEach((handle, index) => {
-          if (handle.type === 'rotate') {
-            // Rotation handle - circular
-            ctx.strokeStyle = '#007bff';
-            ctx.fillStyle = '#ffffff';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(handle.x, handle.y, handleSize/2 + 3, 0, 2 * Math.PI);
-            ctx.fill();
-            ctx.stroke();
-            
-            // Rotation icon
-            ctx.fillStyle = '#007bff';
-            ctx.font = '14px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('🔄', handle.x, handle.y + 5);
-          } else {
-            // Corner/edge handles - squares - BIGGER
-            ctx.fillStyle = '#ffffff';
-            ctx.strokeStyle = '#007bff';
-            ctx.lineWidth = 2;
-            
-            // Add shadow for better visibility
-            ctx.shadowColor = 'rgba(0,0,0,0.2)';
-            ctx.shadowBlur = 2;
-            ctx.shadowOffsetX = 1;
-            ctx.shadowOffsetY = 1;
-            
-            ctx.fillRect(handle.x - handleSize/2, handle.y - handleSize/2, handleSize, handleSize);
-            
-            ctx.shadowColor = 'transparent';
-            ctx.shadowBlur = 0;
-            ctx.shadowOffsetX = 0;
-            ctx.shadowOffsetY = 0;
-            
-            ctx.strokeRect(handle.x - handleSize/2, handle.y - handleSize/2, handleSize, handleSize);
+        if (this.type === 'line') {
+          // For lines: only show 2 endpoint dots (Word-style)
+          const handleSize = 10;
+          
+          // Apply rotation for line endpoints if rotated
+          if (this.rotation !== 0) {
+            ctx.translate(this.centerX, this.centerY);
+            ctx.rotate(this.rotation);
+            ctx.translate(-this.centerX, -this.centerY);
           }
-        });
+          
+          // Endpoint 1
+          ctx.fillStyle = '#ffffff';
+          ctx.strokeStyle = '#007bff';
+          ctx.lineWidth = 2;
+          
+          ctx.shadowColor = 'rgba(0,0,0,0.3)';
+          ctx.shadowBlur = 3;
+          ctx.shadowOffsetX = 1;
+          ctx.shadowOffsetY = 1;
+          
+          ctx.beginPath();
+          ctx.arc(this.x1, this.y1, handleSize/2, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.stroke();
+          
+          // Endpoint 2
+          ctx.beginPath();
+          ctx.arc(this.x2, this.y2, handleSize/2, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.stroke();
+          
+          ctx.shadowColor = 'transparent';
+          ctx.shadowBlur = 0;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
+        } else {
+          // For other shapes: show rotated selection frame
+          const bounds = this.getBounds();
+          
+          // Apply rotation for the selection frame
+          if (this.rotation !== 0) {
+            ctx.translate(this.centerX, this.centerY);
+            ctx.rotate(this.rotation);
+            ctx.translate(-this.centerX, -this.centerY);
+          }
+          
+          // Selection border - now rotated
+          ctx.strokeStyle = '#007bff';
+          ctx.fillStyle = '#ffffff';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([8, 4]);
+          ctx.strokeRect(bounds.left - 8, bounds.top - 8, bounds.width + 16, bounds.height + 16);
+          ctx.setLineDash([]);
+          
+          // Reset transformation for handles to be drawn in world coordinates
+          ctx.restore();
+          ctx.save();
+          
+          // Corner and edge handles - get rotated positions
+          const handleSize = 12;
+          const handles = this.getRotatedHandles();
+          
+          handles.forEach((handle, index) => {
+            if (handle.type === 'rotate') {
+              // Rotation handle - circular
+              ctx.strokeStyle = '#007bff';
+              ctx.fillStyle = '#ffffff';
+              ctx.lineWidth = 2;
+              ctx.beginPath();
+              ctx.arc(handle.x, handle.y, handleSize/2 + 3, 0, 2 * Math.PI);
+              ctx.fill();
+              ctx.stroke();
+              
+              // Rotation icon
+              ctx.fillStyle = '#007bff';
+              ctx.font = '14px Arial';
+              ctx.textAlign = 'center';
+              ctx.fillText('🔄', handle.x, handle.y + 5);
+            } else {
+              // Corner/edge handles - squares
+              ctx.fillStyle = '#ffffff';
+              ctx.strokeStyle = '#007bff';
+              ctx.lineWidth = 2;
+              
+              ctx.shadowColor = 'rgba(0,0,0,0.2)';
+              ctx.shadowBlur = 2;
+              ctx.shadowOffsetX = 1;
+              ctx.shadowOffsetY = 1;
+              
+              ctx.fillRect(handle.x - handleSize/2, handle.y - handleSize/2, handleSize, handleSize);
+              
+              ctx.shadowColor = 'transparent';
+              ctx.shadowBlur = 0;
+              ctx.shadowOffsetX = 0;
+              ctx.shadowOffsetY = 0;
+              
+              ctx.strokeRect(handle.x - handleSize/2, handle.y - handleSize/2, handleSize, handleSize);
+            }
+          });
+        }
         
         ctx.restore();
       }
 
+      getRotatedHandles() {
+        const handles = this.getHandles();
+        if (this.rotation === 0) return handles;
+        
+        // Apply rotation transformation to each handle
+        return handles.map(handle => {
+          const dx = handle.x - this.centerX;
+          const dy = handle.y - this.centerY;
+          
+          const rotatedX = dx * Math.cos(this.rotation) - dy * Math.sin(this.rotation);
+          const rotatedY = dx * Math.sin(this.rotation) + dy * Math.cos(this.rotation);
+          
+          return {
+            ...handle,
+            x: rotatedX + this.centerX,
+            y: rotatedY + this.centerY
+          };
+        });
+      }
+
       getHandles() {
+        if (this.type === 'line') {
+          // For lines: only return 2 endpoint handles
+          return [
+            { x: this.x1, y: this.y1, type: 'line-endpoint', endpoint: 1, cursor: 'crosshair' },
+            { x: this.x2, y: this.y2, type: 'line-endpoint', endpoint: 2, cursor: 'crosshair' }
+          ];
+        }
+        
+        // For other shapes: return full handle set
         const bounds = this.getBounds();
         const handles = [];
         const padding = 8;
@@ -368,7 +447,6 @@
       containsPoint(x, y) {
         const tolerance = 8;
         
-        // Check if point is near the shape outline
         switch (this.type) {
           case 'line':
             return this.pointToLineDistance(x, y) <= tolerance;
@@ -392,12 +470,10 @@
         const top = Math.min(this.y1, this.y2);
         const bottom = Math.max(this.y1, this.y2);
         
-        // Inside rectangle
         if (x >= left && x <= right && y >= top && y <= bottom) {
           return true;
         }
         
-        // On rectangle border
         return ((x >= left - tolerance && x <= right + tolerance && 
                  (Math.abs(y - top) <= tolerance || Math.abs(y - bottom) <= tolerance)) ||
                 (y >= top - tolerance && y <= bottom + tolerance && 
@@ -407,8 +483,9 @@
       getHandleAtPoint(x, y) {
         if (!this.selected) return null;
         
-        const handles = this.getHandles();
-        const tolerance = 20; // Increased from 10 - much easier to grab
+        // Use rotated handles for hit testing if shape is rotated
+        const handles = this.type === 'line' ? this.getHandles() : this.getRotatedHandles();
+        const tolerance = this.type === 'line' ? 15 : 20;
         
         for (let handle of handles) {
           const dist = Math.hypot(x - handle.x, y - handle.y);
@@ -504,7 +581,31 @@
       }
 
       resize(handle, mouseX, mouseY, startMouseX, startMouseY) {
-        // Store original dimensions if not already stored
+        if (this.type === 'line' && handle.type === 'line-endpoint') {
+          // For lines: move the specific endpoint
+          if (handle.endpoint === 1) {
+            this.x1 = mouseX;
+            this.y1 = mouseY;
+          } else {
+            this.x2 = mouseX;
+            this.y2 = mouseY;
+          }
+          this.updateCenter();
+          return;
+        }
+        
+        // For rotated shapes, we need to work in local coordinate space
+        if (this.rotation !== 0) {
+          // Transform mouse coordinates to local space
+          const localMouse = this.worldToLocal(mouseX, mouseY);
+          const localStartMouse = this.worldToLocal(startMouseX, startMouseY);
+          
+          // Perform resize in local space
+          this.resizeInLocalSpace(handle, localMouse.x, localMouse.y, localStartMouse.x, localStartMouse.y);
+          return;
+        }
+        
+        // For non-rotated shapes: use the original resize logic
         if (!this.originalBounds) {
           this.originalBounds = {
             x1: this.x1,
@@ -518,14 +619,92 @@
         const deltaX = mouseX - startMouseX;
         const deltaY = mouseY - startMouseY;
         
-        // Determine which edges to move based on handle position
         const bounds = this.getBounds();
         const isLeft = handle.x <= bounds.left;
         const isRight = handle.x >= bounds.right;
         const isTop = handle.y <= bounds.top;
         const isBottom = handle.y >= bounds.bottom;
         
-        // Calculate new bounds
+        let newX1 = orig.x1;
+        let newY1 = orig.y1;
+        let newX2 = orig.x2;
+        let newY2 = orig.y2;
+        
+        if (isLeft) newX1 = orig.x1 + deltaX;
+        if (isRight) newX2 = orig.x2 + deltaX;
+        if (isTop) newY1 = orig.y1 + deltaY;
+        if (isBottom) newY2 = orig.y2 + deltaY;
+        
+        const minSize = 20;
+        if (Math.abs(newX2 - newX1) < minSize) {
+          if (isLeft) newX1 = newX2 - minSize;
+          if (isRight) newX2 = newX1 + minSize;
+        }
+        if (Math.abs(newY2 - newY1) < minSize) {
+          if (isTop) newY1 = newY2 - minSize;
+          if (isBottom) newY2 = newY1 + minSize;
+        }
+        
+        if (this.type === 'circle') {
+          const centerX = (orig.x1 + orig.x2) / 2;
+          const centerY = (orig.y1 + orig.y2) / 2;
+          const originalRadius = Math.hypot(orig.x2 - orig.x1, orig.y2 - orig.y1);
+          
+          const newRadius = Math.hypot(mouseX - centerX, mouseY - centerY);
+          const scale = newRadius / originalRadius;
+          
+          const halfWidth = Math.abs(orig.x2 - orig.x1) * scale / 2;
+          const halfHeight = Math.abs(orig.y2 - orig.y1) * scale / 2;
+          
+          this.x1 = centerX;
+          this.y1 = centerY;
+          this.x2 = centerX + halfWidth;
+          this.y2 = centerY + halfHeight;
+        } else {
+          this.x1 = newX1;
+          this.y1 = newY1;
+          this.x2 = newX2;
+          this.y2 = newY2;
+        }
+        
+        this.updateCenter();
+      }
+
+      worldToLocal(worldX, worldY) {
+        // Transform world coordinates to local (unrotated) coordinate space
+        const dx = worldX - this.centerX;
+        const dy = worldY - this.centerY;
+        
+        const localX = dx * Math.cos(-this.rotation) - dy * Math.sin(-this.rotation) + this.centerX;
+        const localY = dx * Math.sin(-this.rotation) + dy * Math.cos(-this.rotation) + this.centerY;
+        
+        return { x: localX, y: localY };
+      }
+
+      resizeInLocalSpace(handle, localMouseX, localMouseY, localStartMouseX, localStartMouseY) {
+        // Store original bounds if not already stored
+        if (!this.originalBounds) {
+          this.originalBounds = {
+            x1: this.x1,
+            y1: this.y1, 
+            x2: this.x2,
+            y2: this.y2
+          };
+        }
+
+        const orig = this.originalBounds;
+        const deltaX = localMouseX - localStartMouseX;
+        const deltaY = localMouseY - localStartMouseY;
+        
+        // Get the original handle position in local space
+        const originalLocalHandle = this.worldToLocal(handle.x - (localMouseX - localStartMouseX), handle.y - (localMouseY - localStartMouseY));
+        const bounds = this.getBounds();
+        
+        const isLeft = originalLocalHandle.x <= bounds.left;
+        const isRight = originalLocalHandle.x >= bounds.right;
+        const isTop = originalLocalHandle.y <= bounds.top;
+        const isBottom = originalLocalHandle.y >= bounds.bottom;
+        
         let newX1 = orig.x1;
         let newY1 = orig.y1;
         let newX2 = orig.x2;
@@ -547,39 +726,16 @@
           if (isBottom) newY2 = newY1 + minSize;
         }
         
-        // Special handling for circles and ellipses
-        if (this.type === 'circle') {
-          // For circles, maintain center and adjust radius
-          const centerX = (orig.x1 + orig.x2) / 2;
-          const centerY = (orig.y1 + orig.y2) / 2;
-          const originalRadius = Math.hypot(orig.x2 - orig.x1, orig.y2 - orig.y1);
-          
-          // Calculate new radius based on mouse distance from center
-          const newRadius = Math.hypot(mouseX - centerX, mouseY - centerY);
-          const scale = newRadius / originalRadius;
-          
-          // Apply scaling while maintaining center
-          const halfWidth = Math.abs(orig.x2 - orig.x1) * scale / 2;
-          const halfHeight = Math.abs(orig.y2 - orig.y1) * scale / 2;
-          
-          this.x1 = centerX;
-          this.y1 = centerY;
-          this.x2 = centerX + halfWidth;
-          this.y2 = centerY + halfHeight;
-        } else {
-          // For other shapes, use the calculated bounds
-          this.x1 = newX1;
-          this.y1 = newY1;
-          this.x2 = newX2;
-          this.y2 = newY2;
-        }
+        this.x1 = newX1;
+        this.y1 = newY1;
+        this.x2 = newX2;
+        this.y2 = newY2;
         
         this.updateCenter();
       }
 
       rotate(centerX, centerY, angle) {
         this.rotation += angle;
-        // Keep rotation between 0 and 2π
         this.rotation = this.rotation % (2 * Math.PI);
         if (this.rotation < 0) this.rotation += 2 * Math.PI;
       }
@@ -592,12 +748,10 @@
         redrawCanvas();
       }
       
-      // Update button states
       document.querySelectorAll('#toolbar button').forEach(btn => btn.classList.remove('active'));
       const btn = document.getElementById(selectedTool + 'Btn');
       if (btn) btn.classList.add('active');
       
-      // Update cursor
       updateCursor();
     }
 
@@ -673,13 +827,12 @@
       const y = pos.y;
       
       if (tool === 'select') {
-        // Check if clicking on a handle first
         if (selectedShape) {
           activeHandle = selectedShape.getHandleAtPoint(x, y);
           if (activeHandle) {
-            if (activeHandle.type === 'resize') {
+            if (activeHandle.type === 'resize' || activeHandle.type === 'line-endpoint') {
               isResizing = true;
-              resizeStartX = x; // Store start position
+              resizeStartX = x;
               resizeStartY = y;
               canvas.style.cursor = activeHandle.cursor;
             } else if (activeHandle.type === 'rotate') {
@@ -690,7 +843,6 @@
           }
         }
         
-        // Check if clicking on a shape
         const clickedShape = findShapeAtPoint(x, y);
         
         if (clickedShape) {
@@ -726,7 +878,6 @@
       if (isResizing) {
         isResizing = false;
         activeHandle = null;
-        // Reset original bounds after resize is complete
         if (selectedShape) {
           selectedShape.originalBounds = null;
         }
@@ -754,7 +905,6 @@
       const endX = pos.x;
       const endY = pos.y;
       
-      // Don't create tiny shapes
       if (Math.abs(endX - startX) < 5 && Math.abs(endY - startY) < 5) {
         return;
       }
@@ -762,7 +912,6 @@
       const newShape = new Shape(tool, startX, startY, endX, endY, fillColor);
       shapes.push(newShape);
       
-      // Auto-select newly created shape
       selectedShape = newShape;
       setTool('select');
       redrawCanvas();
@@ -803,14 +952,12 @@
       }
       
       if (tool === 'select') {
-        // Update hover state
         const hoveredShape = findShapeAtPoint(x, y);
         if (hoveredShape !== hoverShape) {
           hoverShape = hoveredShape;
           updateCursor();
         }
         
-        // Update cursor for handles
         if (selectedShape) {
           const handle = selectedShape.getHandleAtPoint(x, y);
           if (handle) {
@@ -826,13 +973,11 @@
       
       if (!isDrawing) return;
       
-      // Show preview
       redrawCanvas();
       const previewShape = new Shape(tool, startX, startY, x, y, fillColor);
       previewShape.draw(ctx, false);
     });
 
-    // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Delete' || e.key === 'Backspace') {
         deleteSelected();
@@ -845,7 +990,6 @@
       }
     });
 
-    // Fill functions
     function floodFill(x, y) {
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const targetColor = getPixel(imageData, x, y);
@@ -904,7 +1048,6 @@
       ctx.putImageData(imageData, 0, 0);
     }
 
-    // Utility functions
     function getPixel(imageData, x, y) {
       if (x < 0 || y < 0 || x >= imageData.width || y >= imageData.height) {
         return [0, 0, 0, 0];
@@ -941,7 +1084,6 @@
       return [r, g, b, 255];
     }
 
-    // Initialize
     redrawCanvas();
   </script>
 </body>
