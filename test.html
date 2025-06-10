@@ -762,6 +762,8 @@
         } else {
           canvas.style.cursor = 'default';
         }
+      } else if (tool === 'floodFill' || tool === 'boundaryFill') {
+        canvas.style.cursor = 'crosshair';
       } else {
         canvas.style.cursor = 'crosshair';
       }
@@ -971,6 +973,11 @@
         return;
       }
       
+      // Don't show preview for fill tools
+      if (tool === 'floodFill' || tool === 'boundaryFill') {
+        return;
+      }
+      
       if (!isDrawing) return;
       
       redrawCanvas();
@@ -1075,6 +1082,20 @@
 
     function colorMatch(a, b) {
       return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
+    }
+
+    function colorSimilar(a, b, tolerance = 30) {
+      // Check if colors are similar within tolerance (for anti-aliasing)
+      return Math.abs(a[0] - b[0]) <= tolerance &&
+             Math.abs(a[1] - b[1]) <= tolerance &&
+             Math.abs(a[2] - b[2]) <= tolerance &&
+             Math.abs(a[3] - b[3]) <= tolerance;
+    }
+
+    function isDarkColor(color, tolerance = 50) {
+      // Check if color is dark (likely a boundary)
+      const brightness = (color[0] + color[1] + color[2]) / 3;
+      return brightness <= tolerance;
     }
 
     function hexToRgba(hex) {
