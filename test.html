@@ -1125,30 +1125,57 @@
 
     function boundaryFill(x, y) {
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const boundary = [0, 0, 0, 255];
       const fillRgba = hexToRgba(fillColor);
+      const startColor = getPixel(imageData, x, y);
+      
+      // If already the fill color, do nothing
+      if (colorMatch(startColor, fillRgba)) return;
+      
+      const fillStack = [[x, y]];
       const visited = new Set();
+      const backgroundColor = [255, 255, 255, 255]; // White background
 
-      function fill(x, y) {
-        const key = x + ',' + y;
-        if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height || visited.has(key)) {
-          return;
+      while (fillStack.length > 0) {
+        const [cx, cy] = fillStack.pop();
+        const key = cx + ',' + cy;
+        
+        if (cx < 0 || cy < 0 || cx >= canvas.width || cy >= canvas.height || visited.has(key)) {
+          continue;
         }
         
         visited.add(key);
-        const current = getPixel(imageData, x, y);
+        const current = getPixel(imageData, cx, cy);
         
-        if (!colorMatch(current, boundary) && !colorMatch(current, fillRgba)) {
-          setPixel(imageData, x, y, fillColor);
-          fill(x + 1, y);
-          fill(x - 1, y);
-          fill(x, y + 1);
-          fill(x, y - 1);
+        // Fill if it's background color or the same as start color (but not already fill color)
+        if ((colorMatch(current, backgroundColor) || colorMatch(current, startColor)) && 
+            !colorMatch(current, fillRgba) && 
+            !isBoundaryColor(current)) {
+          
+          setPixel(imageData, cx, cy, fillColor);
+          
+          // Add adjacent pixels to the stack
+          fillStack.push([cx + 1, cy]);
+          fillStack.push([cx - 1, cy]);
+          fillStack.push([cx, cy + 1]);
+          fillStack.push([cx, cy - 1]);
         }
       }
       
-      fill(x, y);
       ctx.putImageData(imageData, 0, 0);
+    }
+
+    function isBoundaryColor(color) {
+      const backgroundColor = [255, 255, 255, 255];
+      const fillRgba = hexToRgba(fillColor);
+      
+      // Consider it a boundary if it's not background and not the fill color
+      // and if it has sufficient color intensity (not white/transparent)
+      if (colorMatch(color, backgroundColor) || colorMatch(color, fillRgba)) {
+        return false;
+      }
+      
+      // Check if it's a shape color (has reasonable opacity and isn't white)
+      return color[3] > 200 && (color[0] < 240 || color[1] < 240 || color[2] < 240);
     }
 
     function getPixel(imageData, x, y) {
