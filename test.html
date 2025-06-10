@@ -96,14 +96,14 @@
 </head>
 <body>
   <div id="toolbar">
-    <button id="selectBtn" onclick="setTool('select')" class="active">✋ Select</button>
-    <button id="lineBtn" onclick="setTool('line')">📏 Line</button>
-    <button id="rectangleBtn" onclick="setTool('rectangle')">⬜ Rectangle</button>
-    <button id="triangleBtn" onclick="setTool('triangle')">🔺 Triangle</button>
-    <button id="circleBtn" onclick="setTool('circle')">⭕ Circle</button>
-    <button id="ellipseBtn" onclick="setTool('ellipse')">⭕ Ellipse</button>
-    <button id="floodFillBtn" onclick="setTool('floodFill')">🪣 Flood Fill</button>
-    <button id="boundaryFillBtn" onclick="setTool('boundaryFill')">🎨 Boundary Fill</button>
+    <button id="selectBtn" onclick="setTool('select')" class="active">Select</button>
+    <button id="lineBtn" onclick="setTool('line')">Line</button>
+    <button id="rectangleBtn" onclick="setTool('rectangle')">Rectangle</button>
+    <button id="triangleBtn" onclick="setTool('triangle')">Triangle</button>
+    <button id="circleBtn" onclick="setTool('circle')">Circle</button>
+    <button id="ellipseBtn" onclick="setTool('ellipse')">Ellipse</button>
+    <button id="floodFillBtn" onclick="setTool('floodFill')">Flood Fill</button>
+    <button id="boundaryFillBtn" onclick="setTool('boundaryFill')">Boundary Fill</button>
     <div class="color-picker">
       <div class="color-circle active" style="background-color: #000000" onclick="setFillColor(event, '#000000')"></div>
       <div class="color-circle" style="background-color: #ff0000" onclick="setFillColor(event, '#ff0000')"></div>
@@ -113,23 +113,12 @@
       <div class="color-circle" style="background-color: #ff00ff" onclick="setFillColor(event, '#ff00ff')"></div>
       <div class="color-circle" style="background-color: #00ffff" onclick="setFillColor(event, '#00ffff')"></div>
     </div>
-    <button onclick="deleteSelected()" title="Delete Selected">🗑️ Delete</button>
-    <button onclick="clearCanvas()">🗑️ Clear All</button>
+    <button onclick="deleteSelected()" title="Delete Selected">Delete</button>
+    <button onclick="clearCanvas()">Clear All</button>
   </div>
   
   <div id="canvasContainer">
     <canvas id="canvas" width="1200" height="700"></canvas>
-    <div class="info-panel">
-      <strong>🎨 Paint Instructions:</strong><br><br>
-      <strong>Select Tool:</strong> Click shapes to select<br>
-      • Drag to move shapes<br>
-      • Lines: Drag endpoints to resize<br>
-      • Other shapes: Use corner handles to resize<br>
-      • Use rotation handle (🔄) to rotate<br><br>
-      <strong>Drawing Tools:</strong> Click and drag to create<br><br>
-      <strong>Fill Tools:</strong> Click inside shapes to fill<br><br>
-      <strong>Shortcuts:</strong> Delete key to remove selected
-    </div>
   </div>
 
   <script>
@@ -142,6 +131,7 @@
     let isRotating = false;
     let startX = 0, startY = 0;
     let resizeStartX = 0, resizeStartY = 0;
+    let rotationStartAngle = 0;
     let fillColor = '#000000';
     let shapes = [];
     let selectedShape = null;
@@ -163,11 +153,19 @@
         this.rotation = 0;
         this.centerX = (x1 + x2) / 2;
         this.centerY = (y1 + y2) / 2;
+        this.updateCenter();
       }
 
       updateCenter() {
-        this.centerX = (this.x1 + this.x2) / 2;
-        this.centerY = (this.y1 + this.y2) / 2;
+        if (this.type === 'circle' || this.type === 'ellipse') {
+          // For circles and ellipses, the center is at (x1, y1)
+          this.centerX = this.x1;
+          this.centerY = this.y1;
+        } else {
+          // For other shapes, center is the midpoint
+          this.centerX = (this.x1 + this.x2) / 2;
+          this.centerY = (this.y1 + this.y2) / 2;
+        }
       }
 
       draw(ctx, showSelection = true) {
@@ -326,7 +324,7 @@
               ctx.fillStyle = '#007bff';
               ctx.font = '14px Arial';
               ctx.textAlign = 'center';
-              ctx.fillText('🔄', handle.x, handle.y + 5);
+              ctx.fillText('R', handle.x, handle.y + 5);
             } else {
               // Corner/edge handles - squares
               ctx.fillStyle = '#ffffff';
@@ -594,73 +592,221 @@
           return;
         }
         
-        // For rotated shapes, we need to work in local coordinate space
-        if (this.rotation !== 0) {
-          // Transform mouse coordinates to local space
-          const localMouse = this.worldToLocal(mouseX, mouseY);
-          const localStartMouse = this.worldToLocal(startMouseX, startMouseY);
-          
-          // Perform resize in local space
-          this.resizeInLocalSpace(handle, localMouse.x, localMouse.y, localStartMouse.x, localStartMouse.y);
-          return;
-        }
-        
-        // For non-rotated shapes: use the original resize logic
+        // Store original bounds if not already stored
         if (!this.originalBounds) {
           this.originalBounds = {
             x1: this.x1,
             y1: this.y1, 
             x2: this.x2,
-            y2: this.y2
+            y2: this.y2,
+            centerX: this.centerX,
+            centerY: this.centerY
           };
         }
 
         const orig = this.originalBounds;
+        
+        // For rotated shapes, work in local coordinate space
+        if (this.rotation !== 0) {
+          this.resizeRotatedShape(handle, mouseX, mouseY, startMouseX, startMouseY);
+          return;
+        }
+        
+        // For non-rotated shapes
         const deltaX = mouseX - startMouseX;
         const deltaY = mouseY - startMouseY;
         
-        const bounds = this.getBounds();
-        const isLeft = handle.x <= bounds.left;
-        const isRight = handle.x >= bounds.right;
-        const isTop = handle.y <= bounds.top;
-        const isBottom = handle.y >= bounds.bottom;
+        // Determine which edges to move based on handle position relative to original bounds
+        const originalBounds = this.getBoundsFromCoords(orig.x1, orig.y1, orig.x2, orig.y2);
+        const tolerance = 20;
+        
+        const isLeft = handle.x <= originalBounds.left + tolerance;
+        const isRight = handle.x >= originalBounds.right - tolerance;
+        const isTop = handle.y <= originalBounds.top + tolerance;
+        const isBottom = handle.y >= originalBounds.bottom - tolerance;
         
         let newX1 = orig.x1;
         let newY1 = orig.y1;
         let newX2 = orig.x2;
         let newY2 = orig.y2;
         
+        // Apply deltas to appropriate edges
         if (isLeft) newX1 = orig.x1 + deltaX;
         if (isRight) newX2 = orig.x2 + deltaX;
         if (isTop) newY1 = orig.y1 + deltaY;
         if (isBottom) newY2 = orig.y2 + deltaY;
         
-        const minSize = 20;
-        if (Math.abs(newX2 - newX1) < minSize) {
-          if (isLeft) newX1 = newX2 - minSize;
-          if (isRight) newX2 = newX1 + minSize;
-        }
-        if (Math.abs(newY2 - newY1) < minSize) {
-          if (isTop) newY1 = newY2 - minSize;
-          if (isBottom) newY2 = newY1 + minSize;
-        }
-        
+        // Handle special cases for circles and ellipses
         if (this.type === 'circle') {
-          const centerX = (orig.x1 + orig.x2) / 2;
-          const centerY = (orig.y1 + orig.y2) / 2;
+          // For circles, maintain center and scale radius uniformly
+          const centerX = orig.centerX;
+          const centerY = orig.centerY;
           const originalRadius = Math.hypot(orig.x2 - orig.x1, orig.y2 - orig.y1);
           
+          // Calculate new radius based on mouse distance from center
           const newRadius = Math.hypot(mouseX - centerX, mouseY - centerY);
-          const scale = newRadius / originalRadius;
+          const minRadius = 10;
+          const clampedRadius = Math.max(newRadius, minRadius);
           
-          const halfWidth = Math.abs(orig.x2 - orig.x1) * scale / 2;
-          const halfHeight = Math.abs(orig.y2 - orig.y1) * scale / 2;
+          // Update coordinates to maintain circle shape
+          this.x1 = centerX;
+          this.y1 = centerY;
+          this.x2 = centerX + clampedRadius;
+          this.y2 = centerY;
+        } else if (this.type === 'ellipse') {
+          // For ellipses, scale the radii based on handle direction
+          const centerX = orig.centerX;
+          const centerY = orig.centerY;
+          
+          let newRx = Math.abs(orig.x2 - orig.x1);
+          let newRy = Math.abs(orig.y2 - orig.y1);
+          
+          if (isLeft || isRight) {
+            newRx = Math.abs(mouseX - centerX);
+          }
+          if (isTop || isBottom) {
+            newRy = Math.abs(mouseY - centerY);
+          }
+          
+          // Apply minimum size
+          newRx = Math.max(newRx, 10);
+          newRy = Math.max(newRy, 10);
           
           this.x1 = centerX;
           this.y1 = centerY;
-          this.x2 = centerX + halfWidth;
-          this.y2 = centerY + halfHeight;
+          this.x2 = centerX + newRx;
+          this.y2 = centerY + newRy;
         } else {
+          // For rectangles and triangles, apply minimum size constraints
+          const minSize = 20;
+          if (Math.abs(newX2 - newX1) < minSize) {
+            if (isLeft) newX1 = newX2 - minSize;
+            if (isRight) newX2 = newX1 + minSize;
+          }
+          if (Math.abs(newY2 - newY1) < minSize) {
+            if (isTop) newY1 = newY2 - minSize;
+            if (isBottom) newY2 = newY1 + minSize;
+          }
+          
+          this.x1 = newX1;
+          this.y1 = newY1;
+          this.x2 = newX2;
+          this.y2 = newY2;
+        }
+        
+        this.updateCenter();
+      }
+
+      getBoundsFromCoords(x1, y1, x2, y2) {
+        let left = Math.min(x1, x2);
+        let right = Math.max(x1, x2);
+        let top = Math.min(y1, y2);
+        let bottom = Math.max(y1, y2);
+
+        if (this.type === 'circle') {
+          const radius = Math.hypot(x2 - x1, y2 - y1);
+          left = x1 - radius;
+          right = x1 + radius;
+          top = y1 - radius;
+          bottom = y1 + radius;
+        } else if (this.type === 'ellipse') {
+          const rx = Math.abs(x2 - x1);
+          const ry = Math.abs(y2 - y1);
+          left = x1 - rx;
+          right = x1 + rx;
+          top = y1 - ry;
+          bottom = y1 + ry;
+        }
+
+        return {
+          left, right, top, bottom,
+          width: right - left,
+          height: bottom - top,
+          centerX: (left + right) / 2,
+          centerY: (top + bottom) / 2
+        };
+      }
+
+      resizeRotatedShape(handle, mouseX, mouseY, startMouseX, startMouseY) {
+        const orig = this.originalBounds;
+        
+        // Transform mouse coordinates to local (unrotated) space
+        const localMouse = this.worldToLocal(mouseX, mouseY);
+        const localStartMouse = this.worldToLocal(startMouseX, startMouseY);
+        
+        const deltaX = localMouse.x - localStartMouse.x;
+        const deltaY = localMouse.y - localStartMouse.y;
+        
+        // Get original bounds in local space
+        const originalBounds = this.getBoundsFromCoords(orig.x1, orig.y1, orig.x2, orig.y2);
+        
+        // Transform handle to local space to determine which edges to resize
+        const localHandle = this.worldToLocal(handle.x, handle.y);
+        const tolerance = 20;
+        
+        const isLeft = localHandle.x <= originalBounds.left + tolerance;
+        const isRight = localHandle.x >= originalBounds.right - tolerance;
+        const isTop = localHandle.y <= originalBounds.top + tolerance;
+        const isBottom = localHandle.y >= originalBounds.bottom - tolerance;
+        
+        let newX1 = orig.x1;
+        let newY1 = orig.y1;
+        let newX2 = orig.x2;
+        let newY2 = orig.y2;
+        
+        // Apply deltas to appropriate edges
+        if (isLeft) newX1 = orig.x1 + deltaX;
+        if (isRight) newX2 = orig.x2 + deltaX;
+        if (isTop) newY1 = orig.y1 + deltaY;
+        if (isBottom) newY2 = orig.y2 + deltaY;
+        
+        // Handle special cases for circles and ellipses
+        if (this.type === 'circle') {
+          const centerX = orig.centerX;
+          const centerY = orig.centerY;
+          const localCenter = this.worldToLocal(centerX, centerY);
+          const newRadius = Math.hypot(localMouse.x - localCenter.x, localMouse.y - localCenter.y);
+          const minRadius = 10;
+          const clampedRadius = Math.max(newRadius, minRadius);
+          
+          this.x1 = centerX;
+          this.y1 = centerY;
+          this.x2 = centerX + clampedRadius;
+          this.y2 = centerY;
+        } else if (this.type === 'ellipse') {
+          const centerX = orig.centerX;
+          const centerY = orig.centerY;
+          const localCenter = this.worldToLocal(centerX, centerY);
+          
+          let newRx = Math.abs(orig.x2 - orig.x1);
+          let newRy = Math.abs(orig.y2 - orig.y1);
+          
+          if (isLeft || isRight) {
+            newRx = Math.abs(localMouse.x - localCenter.x);
+          }
+          if (isTop || isBottom) {
+            newRy = Math.abs(localMouse.y - localCenter.y);
+          }
+          
+          newRx = Math.max(newRx, 10);
+          newRy = Math.max(newRy, 10);
+          
+          this.x1 = centerX;
+          this.y1 = centerY;
+          this.x2 = centerX + newRx;
+          this.y2 = centerY + newRy;
+        } else {
+          // For rectangles and triangles
+          const minSize = 20;
+          if (Math.abs(newX2 - newX1) < minSize) {
+            if (isLeft) newX1 = newX2 - minSize;
+            if (isRight) newX2 = newX1 + minSize;
+          }
+          if (Math.abs(newY2 - newY1) < minSize) {
+            if (isTop) newY1 = newY2 - minSize;
+            if (isBottom) newY2 = newY1 + minSize;
+          }
+          
           this.x1 = newX1;
           this.y1 = newY1;
           this.x2 = newX2;
@@ -679,59 +825,6 @@
         const localY = dx * Math.sin(-this.rotation) + dy * Math.cos(-this.rotation) + this.centerY;
         
         return { x: localX, y: localY };
-      }
-
-      resizeInLocalSpace(handle, localMouseX, localMouseY, localStartMouseX, localStartMouseY) {
-        // Store original bounds if not already stored
-        if (!this.originalBounds) {
-          this.originalBounds = {
-            x1: this.x1,
-            y1: this.y1, 
-            x2: this.x2,
-            y2: this.y2
-          };
-        }
-
-        const orig = this.originalBounds;
-        const deltaX = localMouseX - localStartMouseX;
-        const deltaY = localMouseY - localStartMouseY;
-        
-        // Get the original handle position in local space
-        const originalLocalHandle = this.worldToLocal(handle.x - (localMouseX - localStartMouseX), handle.y - (localMouseY - localStartMouseY));
-        const bounds = this.getBounds();
-        
-        const isLeft = originalLocalHandle.x <= bounds.left;
-        const isRight = originalLocalHandle.x >= bounds.right;
-        const isTop = originalLocalHandle.y <= bounds.top;
-        const isBottom = originalLocalHandle.y >= bounds.bottom;
-        
-        let newX1 = orig.x1;
-        let newY1 = orig.y1;
-        let newX2 = orig.x2;
-        let newY2 = orig.y2;
-        
-        if (isLeft) newX1 = orig.x1 + deltaX;
-        if (isRight) newX2 = orig.x2 + deltaX;
-        if (isTop) newY1 = orig.y1 + deltaY;
-        if (isBottom) newY2 = orig.y2 + deltaY;
-        
-        // Minimum size constraint
-        const minSize = 20;
-        if (Math.abs(newX2 - newX1) < minSize) {
-          if (isLeft) newX1 = newX2 - minSize;
-          if (isRight) newX2 = newX1 + minSize;
-        }
-        if (Math.abs(newY2 - newY1) < minSize) {
-          if (isTop) newY1 = newY2 - minSize;
-          if (isBottom) newY2 = newY1 + minSize;
-        }
-        
-        this.x1 = newX1;
-        this.y1 = newY1;
-        this.x2 = newX2;
-        this.y2 = newY2;
-        
-        this.updateCenter();
       }
 
       rotate(centerX, centerY, angle) {
@@ -839,6 +932,8 @@
               canvas.style.cursor = activeHandle.cursor;
             } else if (activeHandle.type === 'rotate') {
               isRotating = true;
+              // Store the initial angle from center to rotation handle
+              rotationStartAngle = Math.atan2(y - selectedShape.centerY, x - selectedShape.centerX);
               canvas.style.cursor = 'grabbing';
             }
             return;
@@ -931,13 +1026,14 @@
       }
       
       if (isRotating && selectedShape && activeHandle) {
-        const bounds = selectedShape.getBounds();
-        const angle1 = Math.atan2(activeHandle.y - bounds.centerY, activeHandle.x - bounds.centerX);
-        const angle2 = Math.atan2(y - bounds.centerY, x - bounds.centerX);
-        const deltaAngle = angle2 - angle1;
-        selectedShape.rotate(bounds.centerX, bounds.centerY, deltaAngle);
-        activeHandle.x = x;
-        activeHandle.y = y;
+        // Calculate the current angle from center to mouse
+        const currentAngle = Math.atan2(y - selectedShape.centerY, x - selectedShape.centerX);
+        // Calculate the angle difference
+        const deltaAngle = currentAngle - rotationStartAngle;
+        // Update the rotation start angle for the next frame
+        rotationStartAngle = currentAngle;
+        // Apply the rotation
+        selectedShape.rotate(selectedShape.centerX, selectedShape.centerY, deltaAngle);
         redrawCanvas();
         return;
       }
